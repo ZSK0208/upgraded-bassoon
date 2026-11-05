@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>自习室预约系统</title>
+    <style>
+        *{box-sizing: border-box;margin:0;padding:0;font-family:system-ui, sans-serif;}
+        body{
+            min-height: 100vh;
+            background-image: url("bg2.jpg");
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            position: relative;
+            padding:20px;
+        }
+        body::after{
+            content: '';
+            position: absolute;
+            inset: 0;
+            background-color: rgba(255,255,255,0.65);
+            z-index: 0;
+        }
+        .wrap{
+            position: relative;
+            z-index: 1;
+            max-width:900px;
+            margin:0 auto;
+            animation: fadeIn 0.8s ease-in-out;
+        }
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(8px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        h1{text-align:center;color:#2c3e50;margin-bottom:24px;font-size:24px;}
+        .card{background:#fff;border-radius:12px;padding:20px;margin-bottom:20px;box-shadow:0 2px 10px #00000012;}
+        .row{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;}
+        label{display:block;margin-bottom:6px;color:#444;font-size:14px;}
+        input,select{width:100%;padding:10px;border:1px solid #ddd;border-radius:8px;font-size:15px;}
+        button{padding:11px 18px;border:none;border-radius:8px;cursor:pointer;font-size:15px;}
+        .btn-submit{background:#2563eb;color:white;width:100%;margin-top:8px;}
+        .btn-del{background:#ef4444;color:white;padding:6px 10px;font-size:13px;}
+        table{width:100%;border-collapse:collapse;margin-top:10px;}
+        th,td{border:1px solid #eee;padding:10px;text-align:center;font-size:14px;}
+        th{background:#f0f4ff;color:#2563eb;}
+        .tip{color:#666;font-size:13px;margin-top:6px;}
+
+        /* 座位区域样式 */
+        .seat-wrap{margin:16px 0;}
+        .seat-grid{
+            display:grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap:10px;
+        }
+        .seat{
+            padding:10px 0;
+            text-align:center;
+            border-radius:6px;
+            background:#34d399;
+            color:#fff;
+            cursor:pointer;
+            font-weight:500;
+            transition:0.2s;
+        }
+        .seat:hover{background:#10b981;}
+        .seat.selected{background:#2563eb;}
+        .seat.occupied{background:#9ca3af;cursor:not-allowed;}
+        .aisle{
+            background:#f3f4f6;
+            border:none;
+            cursor:default;
+        }
+        .seat-desc{margin-top:10px;font-size:13px;color:#555;}
+        .back-btn{
+            display:inline-block;
+            margin-bottom:16px;
+            color:#2563eb;
+            cursor:pointer;
+        }
+    </style>
+</head>
+<body>
+    <div class="wrap">
+        <div class="back-btn" onclick="location.href='index.html'">← 返回首页</div>
+        <h1>自习室预约</h1>
+
+        <!-- 预约表单 -->
+        <div class="card">
+            <h3>新增预约</h3>
+            <div class="row">
+                <div>
+                    <label>姓名</label>
+                    <input id="name" type="text" placeholder="请输入姓名">
+                </div>
+                <div>
+                    <label>学号</label>
+                    <input id="stuId" type="text" placeholder="请输入学号">
+                </div>
+            </div>
+            <div class="row">
+                <div>
+                    <label>预约日期</label>
+                    <input id="date" type="date" onchange="refreshSeatMap()">
+                </div>
+                <div>
+                    <label>预约时段</label>
+                    <select id="time" onchange="refreshSeatMap()">
+                        <option value="08:00-10:00">08:00-10:00</option>
+                        <option value="10:00-12:00">10:00-12:00</option>
+                        <option value="14:00-16:00">14:00-16:00</option>
+                        <option value="16:00-18:00">16:00-18:00</option>
+                        <option value="19:00-21:00">19:00-21:00</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="seat-wrap">
+                <label>座位平面图（点击选座）</label>
+                <div class="seat-grid" id="seatContainer"></div>
+                <div class="seat-desc">🟢可选 | 🔵已选中 | ⚫已占用（灰色不可点）</div>
+            </div>
+
+            <input id="seat" type="hidden">
+            <button class="btn-submit" onclick="addBook()">提交预约</button>
+            <div class="tip">提示：切换日期/时段会自动刷新座位占用状态</div>
+        </div>
+
+        <!-- 预约列表 -->
+        <div class="card">
+            <h3>预约记录</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>姓名</th>
+                        <th>学号</th>
+                        <th>日期</th>
+                        <th>时段</th>
+                        <th>座位</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody id="tableBody"></tbody>
+            </table>
+        </div>
+    </div>
+
+<script>
+    let bookList = JSON.parse(localStorage.getItem('studyBook')) || [];
+    const tableBody = document.getElementById('tableBody');
+    const seatContainer = document.getElementById('seatContainer');
+    let selectedSeat = null;
+    // 座位排布：一共30个座位，数组里""代表过道
+    const seatArr = [
+        1,2,3,"",4,5,
+        6,7,8,"",9,10,
+        11,12,13,"",14,15,
+        16,17,18,"",19,20,
+        21,22,23,"",24,25,
+        26,27,28,"",29,30
+    ];
+
+    // 获取当前选中的日期+时段
+    function getCurrentDT(){
+        return {
+            date: document.getElementById('date').value,
+            time: document.getElementById('time').value
+        }
+    }
+
+    // 渲染座位图
+    function refreshSeatMap(){
+        seatContainer.innerHTML = '';
+        selectedSeat = null;
+        document.getElementById('seat').value = '';
+        const dt = getCurrentDT();
+        if(!dt.date || !dt.time) return;
+
+        // 获取当前日期时段已经被占用的座位集合
+        const occupied = new Set();
+        bookList.forEach(b=>{
+            if(b.date === dt.date && b.time === dt.time){
+                occupied.add(Number(b.seat));
+            }
+        })
+
+        seatArr.forEach(s=>{
+            const div = document.createElement('div');
+            div.className = 'seat';
+            if(s === ""){
+                div.classList.add('aisle');
+                div.innerText = '';
+            }else{
+                div.innerText = s;
+                if(occupied.has(s)){
+                    div.classList.add('occupied');
+                }else{
+                    div.onclick = ()=>{
+                        // 清除之前选中
+                        document.querySelectorAll('.seat.selected').forEach(el=>el.classList.remove('selected'));
+                        div.classList.add('selected');
+                        selectedSeat = s;
+                        document.getElementById('seat').value = s;
+                    }
+                }
+            }
+            seatContainer.appendChild(div);
+        })
+    }
+
+    // 渲染预约表格
+    function render(){
+        tableBody.innerHTML = '';
+        bookList.forEach((item, idx)=>{
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${item.name}</td>
+                <td>${item.stuId}</td>
+                <td>${item.date}</td>
+                <td>${item.time}</td>
+                <td>${item.seat}</td>
+                <td><button class="btn-del" onclick="del(${idx})">取消</button></td>
+            `
+            tableBody.appendChild(tr);
+        })
+        localStorage.setItem('studyBook', JSON.stringify(bookList));
+        refreshSeatMap();
+    }
+
+    // 添加预约
+    function addBook(){
+        const name = document.getElementById('name').value.trim();
+        const stuId = document.getElementById('stuId').value.trim();
+        const date = document.getElementById('date').value;
+        const time = document.getElementById('time').value;
+        const seat = document.getElementById('seat').value;
+
+        if(!name || !stuId || !date || !seat){
+            alert('请填写信息并点击选择座位！');
+            return;
+        }
+        const repeat = bookList.some(b=> b.date===date && b.time===time && b.seat===seat);
+        if(repeat){
+            alert('该座位此时段已经被预约！');
+            return;
+        }
+        bookList.push({name,stuId,date,time,seat});
+        render();
+        alert('预约成功！');
+        document.getElementById('name').value='';
+        document.getElementById('stuId').value='';
+    }
+
+    // 删除预约
+    function del(index){
+        if(confirm('确定取消这条预约吗？')){
+            bookList.splice(index,1);
+            render();
+        }
+    }
+
+    // 初始化
+    render();
+</script>
+</body>
+</html>
